@@ -198,6 +198,7 @@ class Reader:
             n['function_flag'] = chr(self.byte())
             n['name'] = self.string()
             has_body = self.boolean()
+            n['has_body'] = has_body
             count = self.i32()
             if not 0 <= count <= 10000:
                 raise Unsupported(f'Invalid parameter count at {self.at-4}')
@@ -211,7 +212,7 @@ class Reader:
                 n['parameters'].append(p)
             n['field_168'], n['body_bytes'] = self.u32(), self.u32()
             body_start = self.at
-            if n['field_168'] != body_start:
+            if (has_body and n['field_168'] != body_start) or (not has_body and n['field_168'] not in (0, body_start)):
                 raise Unsupported(f'Function body offset mismatch at {body_start}')
             n['body'] = self.node() if has_body else None
             n['body_consumed_bytes'] = self.at-body_start
@@ -269,15 +270,15 @@ class Reader:
             raise Unsupported(f'Unsupported tag {t} at offset {n["offset"]}, source line {n["source_line"]}')
 
 
-def main(output_dir=HERE):
+def main(output_dir=HERE, reader_class=Reader):
     sys.setrecursionlimit(5000)
     output_dir = Path(output_dir)
-    record = json.loads((output_dir/'decoded-record.json').read_text())
+    record = json.loads((output_dir/'decoded-record.json').read_text(encoding='utf-8'))
     data = (output_dir/(Path(record['source']).stem+'.serialized.bin')).read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     if digest != record['serialized_sha256']:
         raise Unsupported('Serialized record hash differs from verified decryption')
-    reader = Reader(data)
+    reader = reader_class(data)
     root, failure = None, None
     try:
         root = reader.node()

@@ -64,8 +64,9 @@ def build_index(args):
 
 def reconstruct(args):
     name = args.source.upper()
-    if not re.fullmatch(r'[A-Z0-9_]+\.(PRW|PRX)',name):
-        raise idx.FormatError('Expected one indexed ADVPL basename with .PRW or .PRX extension; TLPP is unsupported')
+    if not re.fullmatch(r'[A-Z0-9_]+\.(PRW|PRX|TLPP)',name):
+        raise idx.FormatError('Expected one indexed PRW, PRX or TLPP basename')
+    is_tlpp = name.endswith('.TLPP')
     cached = read_json(args.index_dir/'descriptor.json')
     if cached['appserver_sha256'] != idx.APP_SERVER_SHA256:
         raise idx.FormatError('Cached index uses an unsupported AppServer profile')
@@ -110,7 +111,8 @@ def reconstruct(args):
     else:
         serialized = compressed
     out = args.output_dir
-    if (out/'decompilation.json').exists() or (out/(stem+'.reconstruido.prw')).exists():
+    suffix = '.tlpp' if is_tlpp else '.prw'
+    if (out/'decompilation.json').exists() or (out/(stem+'.reconstruido'+suffix)).exists():
         raise idx.FormatError('Use a fresh output directory to keep earlier results reviewable')
     out.mkdir(parents=True,exist_ok=True)
     (out/(stem+'.serialized.bin')).write_bytes(serialized)
@@ -120,12 +122,16 @@ def reconstruct(args):
               'cipher_bytes':len(encrypted),'compressed_bytes':len(compressed),
               'serialized_bytes':len(serialized),'serialized_sha256':hashlib.sha256(serialized).hexdigest()}
     write_json(out/'decoded-record.json',record)
+    reader_class,emitter_class = object_reader.Reader,advpl_emitter.Emitter
+    if is_tlpp:
+        from tlpp_reader import Reader as reader_class
+        from tlpp_emitter import Emitter as emitter_class
     with contextlib.redirect_stdout(io.StringIO()):
-        parse_failed = object_reader.main(out)
+        parse_failed = object_reader.main(out,reader_class=reader_class)
     if parse_failed:
         raise idx.FormatError('Incomplete typed parse: inspect object-parse.json; no source emitted')
     with contextlib.redirect_stdout(io.StringIO()):
-        advpl_emitter.main(out)
+        advpl_emitter.main(out,emitter_class=emitter_class)
     from checks import verify
     report = verify(out)
     print(json.dumps({'status':'reconstructed-and-statically-verified',
@@ -143,7 +149,7 @@ def main():
     index.add_argument('--output-dir',required=True,type=Path)
     index.add_argument('--openssl',type=Path)
     index.set_defaults(run=build_index)
-    source = commands.add_parser('decompile',help='Reconstruct exactly one PRW/PRX entry')
+    source = commands.add_parser('decompile',help='Reconstruct one PRW/PRX entry or supported TLPP class')
     source.add_argument('--rpo',required=True,type=Path)
     source.add_argument('--index-dir',required=True,type=Path)
     source.add_argument('--source',required=True)

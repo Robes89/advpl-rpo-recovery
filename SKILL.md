@@ -1,43 +1,45 @@
 ---
 name: advpl-rpo-recovery
-description: Reconstruct ADVPL PRW/PRX routines from a supplied Protheus RPO using a validated AppServer build profile, with offline index decoding and artifact verification. Use for RPO recovery; TLPP and other builds need separate format analysis.
+description: Reconstruct ADVPL PRW/PRX routines and supported TLPP classes from a supplied Protheus RPO using a validated AppServer build profile, with offline index decoding and artifact verification. Unknown types and other builds require separate format analysis.
 ---
 
-# Recuperar ADVPL de RPO
+# Recuperar ADVPL e TLPP de RPO
 
-Reconstrua uma entrada exata `.PRW` ou `.PRX` de um RPO fornecido pelo usu?rio. Use os scripts inclu?dos, que implementam a leitura e emiss?o experimentais derivadas do AppServer analisado. Eles n?o dependem de um modelo espec?fico, servidor MCP ou instala??o do REA.
+Reconstrua uma entrada exata `.PRW`, `.PRX` ou uma classe `.TLPP` compatível de um RPO fornecido pelo usuário. Use os scripts incluídos, derivados dos leitores do AppServer analisado. Eles não dependem de um modelo específico, servidor MCP ou instalação do REA.
 
-A portabilidade das instru??es n?o amplia o suporte ao formato: o perfil atual aceita somente o DLL e o descritor documentados em [formato e evid?ncias](references/format-and-evidence.md). N?o declare suporte universal a RPO, TLPP ou equival?ncia do fonte original.
+A portabilidade das instruções não amplia o suporte ao formato: o perfil atual aceita somente o DLL e o descritor documentados em [formato e evidências](references/format-and-evidence.md). Para TLPP, leia também [suporte TLPP](references/tlpp.md) antes de interpretar os resultados. Não declare suporte universal a RPO ou equivalência do fonte original.
 
-## Execu??o
+## Execução
 
-Identifique o RPO, a rotina e uma pasta de sa?da no contexto do usu?rio. Para gerar um ?ndice novo, obtenha o `apwinnt.dll` compat?vel fornecido pelo usu?rio. Reutilize um ?ndice validado existente quando dispon?vel; o comando confere hashes do RPO e do ?ndice. S? pergunte por entradas ausentes que impe?am a execu??o.
+Identifique o RPO, a rotina e uma pasta de saída no contexto do usuário. Para gerar um índice novo, obtenha o `apwinnt.dll` compatível fornecido pelo usuário. Reutilize um índice validado existente quando disponível; o comando confere hashes do RPO e do índice. Só pergunte por entradas ausentes que impeçam a execução.
 
-Use Python 3.11 ou superior e um OpenSSL que disponibilize a cifra necess?ria. Os scripts usam a biblioteca padr?o do Python. Descubra os execut?veis no ambiente; use `--openssl CAMINHO` quando OpenSSL n?o estiver no PATH. N?o reutilize caminhos de m?quinas anteriores.
+Use Python 3.11+ e OpenSSL com a cifra necessária. Os scripts usam a biblioteca padrão do Python. Descubra os executáveis no ambiente; use `--openssl CAMINHO` quando necessário. Não reutilize caminhos de outras máquinas.
 
-Execute os comandos a partir de qualquer diret?rio, substituindo `SKILL` pelo caminho desta pasta:
+Substitua `SKILL` pelo caminho desta pasta e cite caminhos com espaços conforme o shell:
 
 ```text
 python SKILL/scripts/rpo.py index --rpo ARQUIVO.rpo --appserver apwinnt.dll --output-dir INDICE
 python SKILL/scripts/rpo.py decompile --rpo ARQUIVO.rpo --index-dir INDICE --source ROTINA.PRW --output-dir SAIDA
+python SKILL/scripts/rpo.py decompile --rpo ARQUIVO.rpo --index-dir INDICE --source CLASSE.TLPP --output-dir SAIDA_TLPP
 python SKILL/scripts/rpo.py verify --artifact-dir SAIDA
 ```
 
-Os dois primeiros comandos aceitam `--openssl CAMINHO`. Cite caminhos com espa?os conforme o shell. Escolha uma pasta de sa?da nova por reconstru??o. `decompile` j? executa a verifica??o est?tica; `verify` permite repeti-la posteriormente.
+Os dois primeiros subcomandos aceitam `--openssl CAMINHO`. Escolha uma pasta de saída nova por reconstrução. `decompile` já verifica os artefatos; `verify` permite repetir essa etapa.
 
-O nome da entrada ? exato, sem confundir variantes como `JURXFUN`, `JURXFUNB` e `JURXFUNC`. O comando n?o executa o RPO, carrega o DLL nem inicia o AppServer. N?o substitua essa leitura por chamadas ao debugger, compila??o ou grava??o no reposit?rio.
+O nome da entrada é exato: não confunda variantes como `JURXFUN`, `JURXFUNB` e `JURXFUNC`. O comando não executa o RPO, carrega o DLL nem inicia o AppServer. Não substitua essa leitura por chamadas ao debugger, compilação ou gravação no repositório.
 
-## Falhas e interpreta??o
+## Falhas e interpretação
 
-- Hash/build incompat?vel: informe o perfil n?o suportado. Para estend?-lo, leia a refer?ncia de formato e derive o leitor a partir dos novos bin?rios e s?mbolos; n?o desative as confer?ncias.
-- Tipo ou sem?ntica desconhecida: preserve o diagn?stico e os objetos parciais. N?o pule bytes, invente corpos, transforme n?s em coment?rios nem anuncie uma recupera??o completa.
-- Falha de padding, checksum, limite ou refer?ncia: interrompa a emiss?o e relate o campo/etapa. N?o divulgue chaves, IVs nem a linha de comando interna de decifragem.
-- OpenSSL indispon?vel ou sem a cifra: informe o requisito concreto e continue apenas as etapas que n?o dependam dele. A skill n?o instala depend?ncias automaticamente.
+- Hash/build incompatível: informe o perfil não suportado. Para estendê-lo, derive os leitores dos novos binários e símbolos; não desative conferências.
+- Tipo ou semântica desconhecida: preserve o diagnóstico e os objetos parciais. Não pule bytes, invente corpos nem transforme nós desconhecidos em comentários para anunciar recuperação completa.
+- Em TLPP, referências com corpo ausente ficam em `bodyless_references`. Não invente assinaturas ou implementações, nem afirme sua origem sem evidência. Preserve chamadas à superclasse indicadas no registro.
+- Falha de padding, checksum, limite ou referência: interrompa e relate a etapa. Não divulgue chaves, IVs nem a linha de comando interna da decifragem.
+- OpenSSL indisponível ou sem a cifra: informe o requisito concreto e continue apenas as etapas independentes. A skill não instala dependências automaticamente.
 
 ## Entrega
 
-Entregue um link para `ROTINA.reconstruido.prw`, quantidade de fun??es e linhas, resultado de `verification.json` e a limita??o de recompila??o/valida??o funcional pendente. Mantenha junto ao fonte `selected-entry.json`, `decoded-record.json`, `object-parse.json`, `decompilation.json`, `verification.json` e o registro serializado.
+Entregue o link para `ROTINA.reconstruido.prw` ou `CLASSE.reconstruido.tlpp`, quantidade de funções/métodos e linhas, resultado de `verification.json` e a validação funcional pendente. Para TLPP, informe também quantas referências não têm corpo. Mantenha junto ao fonte `selected-entry.json`, `decoded-record.json`, `object-parse.json`, `decompilation.json`, `verification.json` e o registro serializado.
 
-A cobertura de todos os objetos significa que o emissor percorreu a ?rvore, n?o que o Protheus aceita o fonte ou que seu comportamento ? equivalente. Coment?rios, includes, macros do pr?-processador e formata??o originais n?o s?o recuperados. Preserve as chamadas de recursos de idioma. N?o atribua os artefatos locais a ferramentas REA que n?o foram executadas.
+Cobertura de objetos significa que o emissor percorreu a árvore, não que o Protheus aceita o fonte ou que seu comportamento é equivalente. Comentários, includes, macros do pré-processador e formatação originais não são recuperados. Preserve chamadas de recursos de idioma. Não atribua artefatos locais a ferramentas REA que não foram executadas.
 
-Para transportar ou instalar em outro agente/modelo, leia [portabilidade](references/portability.md). Para verificar o c?digo da skill sem artefatos propriet?rios, execute `python SKILL/scripts/test_core.py`.
+Para instalar em outro agente/modelo, leia [portabilidade](references/portability.md). Para testar o código sem artefatos proprietários, execute `python SKILL/scripts/test_core.py`.

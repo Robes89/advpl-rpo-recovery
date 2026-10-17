@@ -1,4 +1,4 @@
 interface:
   display_name: "ADVPL RPO Recovery"
-  short_description: "ReconstrÛi ADVPL de RPO com verificaÁ„o de artefatos"
+  short_description: "Reconstr√≥i ADVPL e TLPP de RPO com verifica√ß√£o est√°tica"
   default_prompt: "Use $advpl-rpo-recovery para reconstruir uma rotina do RPO fornecido e verificar os artefatos."

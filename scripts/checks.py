@@ -44,8 +44,10 @@ def verify(directory):
     record,parsed,emitted = read('decoded-record.json'),read('object-parse.json'),read('decompilation.json')
     selected = read('selected-entry.json')
     name = record['source']
-    require(Path(name).name==name and re.fullmatch(r'[A-Za-z0-9_]+\.(PRW|PRX)',name,re.I),'Unsafe source name')
-    require(emitted['source']==Path(name).stem+'.reconstruido.prw','Unexpected output name')
+    require(Path(name).name==name and re.fullmatch(r'[A-Za-z0-9_]+\.(PRW|PRX|TLPP)',name,re.I),'Unsafe source name')
+    is_tlpp = name.upper().endswith('.TLPP')
+    suffix = '.tlpp' if is_tlpp else '.prw'
+    require(emitted['source']==Path(name).stem+'.reconstruido'+suffix,'Unexpected output name')
     entry = selected['entries']
     require(len(entry)==1 and entry[0]['name']==name,'Selected identity mismatch')
     require(selected['rpo_sha256']==record['rpo_sha256'],'RPO identity mismatch')
@@ -60,11 +62,17 @@ def verify(directory):
     require(root['end_offset']==len(binary) and root['program_source']==name,'Program identity/boundary mismatch')
     nodes = list(advpl_emitter.executable_nodes(root))
     for n in nodes:
-        if n['tag'] in (67,69,109):
+        if n['tag'] in (67,68,69,109):
             require(n['body_bytes']==n['body_consumed_bytes'],'Body size mismatch')
-            require(n['field_168']==n['body']['offset'],'Body offset mismatch')
+            if n['body'] is not None:
+                require(n['field_168']==n['body']['offset'],'Body offset mismatch')
+            else:
+                require(n['field_168']==0 and n['body_bytes']==0,'Bodyless reference boundary mismatch')
             require(n['field_170']==n['extra_offset'],'Pool offset mismatch')
-    emitter = advpl_emitter.Emitter()
+    emitter_class = advpl_emitter.Emitter
+    if is_tlpp:
+        from tlpp_emitter import Emitter as emitter_class
+    emitter = emitter_class()
     emitter.program(root)
     require(all(id(n) in emitter.rendered for n in nodes),'Executable node omitted')
     require(len(nodes)==emitted['executable_object_count'] and emitted['unrendered_objects']==0,'Coverage mismatch')
@@ -72,13 +80,19 @@ def verify(directory):
     require(hashlib.sha256(source_bytes).hexdigest()==emitted['source_sha256'],'Source hash mismatch')
     source = (directory/emitted['source']).read_text(encoding='utf-8-sig')
     require(source=='\n'.join(emitter.lines)+'\n','Emission differs from tree')
-    require(len(emitter.functions)==len(root['functions'])==len(emitted['functions']),'Function count mismatch')
+    implemented = len(root['functions'])
+    if is_tlpp:
+        implemented += sum(fn['body'] is not None for cls in root['classes'] for fn in cls['methods'])
+        require(emitted['bodyless_references']==emitter.references,'Bodyless references mismatch')
+    require(len(emitter.functions)==implemented==len(emitted['functions']),'Function count mismatch')
     lexical(source)
     result = {'status':'passed-static-verification','source':emitted['source'],
               'source_sha256':emitted['source_sha256'],'executable_objects':len(nodes),
-              'unrendered_objects':0,'functions':len(root['functions']),'generated_lines':len(emitter.lines),
+              'unrendered_objects':0,'functions':implemented,'generated_lines':len(emitter.lines),
               'checks':['artifact identity and hashes','complete parse','function and pool boundaries',
                         'emission coverage','constant references','deterministic emission','lexical balance'],
               'limitation':'Not compiled or executed; semantic equivalence is unverified.'}
+    if is_tlpp:
+        result.update(classes=len(root['classes']),bodyless_references=len(emitter.references))
     (directory/'verification.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     return result

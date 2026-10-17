@@ -1,6 +1,6 @@
 # Perfil validado e evidências
 
-Este leitor é derivado da análise estática do AppServer fornecido durante a recuperação de FISXAPUR.PRX e JURXFUN.PRW. Usa scripts locais; não implementa um novo servidor REA e não depende do descompilador de um provedor externo.
+Este leitor é derivado da análise estática do AppServer fornecido durante a recuperação de FISXAPUR.PRX, JURXFUN.PRW e ACBALANCEDISTRIBUTEREPOSITORY.TLPP. Usa scripts locais; não implementa um novo servidor REA e não depende do descompilador de um provedor externo.
 
 ## Limites do perfil
 
@@ -14,7 +14,7 @@ Este leitor é derivado da análise estática do AppServer fornecido durante a r
 | Janela do trailer | últimos `0x5000` bytes |
 | Carrier de material público | RVA `0x311b990`; somente a parte pública é lida |
 
-O número do build no diagnóstico não substitui o hash da imagem. O script rejeita DLLs diferentes e descritores fora do perfil. Isso permite testar outros RPOs desse formato, mas não comprova que seus tipos compilados estejam todos cobertos. Os arquivos TLPP não foram validados.
+O número do build no diagnóstico não substitui o hash da imagem. O script rejeita DLLs diferentes e descritores fora do perfil. Isso permite testar outros RPOs desse formato, mas não comprova que seus tipos compilados estejam todos cobertos. O suporte TLPP é limitado às estruturas descritas em [suporte TLPP](tlpp.md).
 
 ## Caminho de leitura
 
@@ -36,12 +36,13 @@ Casos relevantes já conferidos: comparação 0=`=`, 1=`==`, 2=`<`, 3=`<=`, 4=`>
 
 ## Validação e extensão
 
-A portabilidade do pacote foi verificada gerando um índice novo de 149.412 entradas e reproduzindo byte a byte as duas reconstruções já verificadas:
+A portabilidade do pacote foi verificada gerando um índice novo de 149.412 entradas. A versão atual reproduz byte a byte as três reconstruções já verificadas:
 
 | Rotina | Funções | Linhas | SHA-256 do fonte |
 | --- | --- | --- | --- |
 | FISXAPUR.PRX | 92 | 7.602 | `cff9c8bd96bea437026a3dce69874a2561c54967cbfa43ce67906de02d740de2` |
 | JURXFUN.PRW | 183 | 6.107 | `f12b1ea1ab817b50d2d7c4b8642e5bf3c62c438beacf2adc563ff54a2a50a21e` |
+| ACBALANCEDISTRIBUTEREPOSITORY.TLPP | 6 métodos | 114 | `b7410aef6b10a72e423955d95077c0301a4ccef9fb761cd04e27b6940a7f2d7b` |
 
 Esses testes não incluem compilação nem execução Protheus. A referência de origem é a análise local dos leitores `load`, do despacho e de `transAdvpl`, com PDB correspondente e Capstone/DbgHelp. Os binários e ASM proprietários não são distribuídos no pacote.
 

@@ -283,20 +283,22 @@ def executable_nodes(value):
             if key != 'constants': yield from executable_nodes(child)
 
 
-def main(output_dir=HERE):
+def main(output_dir=HERE, emitter_class=Emitter):
     sys.setrecursionlimit(5000)
     output_dir = Path(output_dir)
     parsed = json.loads((output_dir/'object-parse.json').read_text(encoding='utf-8'))
     if parsed['status'] != 'complete-object-parse':
         raise EmissionError('Full tree required: '+str(parsed['blocker']))
-    emitter = Emitter()
+    emitter = emitter_class()
     emitter.program(parsed['root'])
     nodes = list(executable_nodes(parsed['root']))
     missing = [n for n in nodes if id(n) not in emitter.rendered]
     if missing:
         emitter.error(missing[0], f'{len(missing)} executable objects were not rendered')
     source = '\n'.join(emitter.lines)+'\n'
-    destination = output_dir/(Path(parsed['root']['program_source']).stem+'.reconstruido.prw')
+    is_tlpp = parsed['root']['program_source'].upper().endswith('.TLPP')
+    suffix = '.tlpp' if is_tlpp else '.prw'
+    destination = output_dir/(Path(parsed['root']['program_source']).stem+'.reconstruido'+suffix)
     destination.write_text(source, encoding='utf-8-sig', newline='\r\n')
     report = {'status':'experimental-advpl-reconstruction','source':destination.name,
               'serialized_sha256':parsed['serialized_sha256'],
@@ -306,6 +308,11 @@ def main(output_dir=HERE):
               'tag_visits':dict(emitter.visited), 'source_map':emitter.mapping,
               'limitations':['Not compiled or executed; semantic equivalence is unverified.',
                              'Original comments, preprocessor macros, includes and formatting are unavailable.']}
+    if is_tlpp:
+        report.update(status='experimental-tlpp-class-reconstruction',
+                      classes=len(parsed['root']['classes']),implemented_methods=len(emitter.functions),
+                      bodyless_references=emitter.references)
+        report['limitations'].append('Bodyless method references are retained as metadata; signatures and implementations are not invented.')
     (output_dir/'decompilation.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
     print(json.dumps({k:v for k,v in report.items() if k not in ('source_map','functions')},indent=2))
     print('Functions:',len(emitter.functions))

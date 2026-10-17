@@ -1,22 +1,33 @@
 {
   "status": "passed",
-  "fresh_index": true,
-  "index_sha256": "e77f3e32228c9506bca3f7c24bfdf60f27a16305ac67fce4210f1000e63255bc",
+  "synthetic_tests": 13,
+  "synthetic_failures": 0,
+  "validated_on": "2026-10-17",
   "results": [
     {
-      "source": "FISXAPUR",
+      "source": "FISXAPUR.PRX",
       "byte_identical_to_validated_source": true,
-      "sha256": "cff9c8bd96bea437026a3dce69874a2561c54967cbfa43ce67906de02d740de2"
+      "sha256": "cff9c8bd96bea437026a3dce69874a2561c54967cbfa43ce67906de02d740de2",
+      "functions": 92,
+      "generated_lines": 7602,
+      "bodyless_references": 0
     },
     {
-      "source": "JURXFUN",
+      "source": "JURXFUN.PRW",
       "byte_identical_to_validated_source": true,
-      "sha256": "f12b1ea1ab817b50d2d7c4b8642e5bf3c62c438beacf2adc563ff54a2a50a21e"
+      "sha256": "f12b1ea1ab817b50d2d7c4b8642e5bf3c62c438beacf2adc563ff54a2a50a21e",
+      "functions": 183,
+      "generated_lines": 6107,
+      "bodyless_references": 0
+    },
+    {
+      "source": "ACBALANCEDISTRIBUTEREPOSITORY.TLPP",
+      "byte_identical_to_validated_source": true,
+      "sha256": "b7410aef6b10a72e423955d95077c0301a4ccef9fb761cd04e27b6940a7f2d7b",
+      "functions": 6,
+      "generated_lines": 114,
+      "bodyless_references": 2
     }
   ],
-  "synthetic_tests": 8,
-  "synthetic_failures": 0,
-  "official_skill_validator": "passed",
-  "validated_on": "2026-10-17",
-  "scope": "Offline reconstruction only; no Protheus compilation or execution."
+  "scope": "Offline reconstruction; no Protheus compilation or execution."
 }
