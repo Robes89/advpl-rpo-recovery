@@ -42,6 +42,8 @@ class Emitter:
     BINARY = {16:'+',17:'-',18:'*',19:'/',20:'.And.',21:'.Or.',22:'%',23:'^',24:'$',
               113:'<<',114:'>>',118:'+',119:'+',120:'+'}
     ASSIGN = {35:':=',36:':=',38:'+=',39:'-=',40:'*=',41:'/='}
+    # Letras validadas: CNTA121.PRW (C/N/L/D/A/O) e MATA103.PRW (B = "Local bATFVlCT as Block").
+    TYPED = {'C':'Character','N':'Numeric','L':'Logical','D':'Date','A':'Array','O':'Object','B':'Block'}
 
     def __init__(self):
         self.pool = []
@@ -77,6 +79,15 @@ class Emitter:
         if t == 0:
             return '' if missing else 'Nil'
         if t == 115: return 'JsonObject():New()'
+        if t == 500:
+            # 'U' = tipo nao reconhecido pelo compilador (ex.: As Caracter): sem tipo efetivo.
+            if n['field_typed'] != 0:
+                self.error(n, 'Typed declaration with non-zero field not validated')
+            if n['var_type'] == 'U':
+                return n['name']
+            if n['var_type'] not in self.TYPED:
+                self.error(n, f'Typed declaration kind {n["var_type"]!r} not validated')
+            return n['name']+' As '+self.TYPED[n['var_type']]
         if t == 73:
             return 'Break('+('' if n['value'] is None else self.expr(n['value']))+')'
         if t == 121:
@@ -142,7 +153,12 @@ class Emitter:
         if t == 60: return self.expr(n['array'])+'['+self.arguments(n['index'])+']'
         if t == 61: return '@'+self.expr(n['operand'])
         if t in (62,63):
-            left, right = self.expr(n['left']), self.expr(n['right'])
+            right = self.expr(n['right'])
+            if n['left'] is None:
+                # Campo sem alias (area corrente): forma de REPLACE x WITH y => _FIELD->x := y.
+                # Validado em MATA103.PRW (Replace B3_FILIAL With ..., Replace &(cMes) With ...).
+                return '_FIELD->'+('('+right+')' if t == 63 else right)
+            left = self.expr(n['left'])
             alias = left if n['left']['tag'] == 27 else '('+left+')'
             return alias+'->'+('('+right+')' if t == 63 else right)
         if t == 99:
