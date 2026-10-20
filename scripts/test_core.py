@@ -4,11 +4,14 @@ import warnings
 import struct
 from pathlib import Path
 import re
+import json
+import tempfile
 from advpl_emitter import Emitter, EmissionError, quote
 from object_reader import Reader, Unsupported
 from checks import lexical
 from tlpp_reader import Reader as TLPPReader
 from tlpp_emitter import Emitter as TLPPEmitter
+from align_lines import align
 
 
 def node(tag, **fields): return dict(tag=tag,offset=0,source_line=1,**fields)
@@ -101,6 +104,45 @@ class CoreChecks(unittest.TestCase):
         emitter.pool = [node(25,kind='C',value='outer')]
         block = node(69,parameters=[],constants=[],body=node(121,constant_index=0))
         self.assertEqual(emitter.expr(block),'{|| "outer"}')
+
+    def test_typed_declaration(self):
+        payload = bytes([106])+struct.pack('<i',500)+b'CCNOME\0'+struct.pack('<i',0)
+        reader = Reader(payload)
+        typed = reader.node()
+        self.assertEqual(reader.at,len(payload))
+        self.assertEqual((typed['tag'],typed['var_type'],typed['name'],typed['field_typed']),(500,'C','CNOME',0))
+        self.assertEqual(Emitter().expr(typed),'CNOME As Character')
+        self.assertEqual(Emitter().expr(node(500,var_type='B',name='BBLOCO',field_typed=0)),'BBLOCO As Block')
+        self.assertEqual(Emitter().expr(node(500,var_type='U',name='CJSON',field_typed=0)),'CJSON')
+        for value in (node(500,var_type='X',name='C',field_typed=0),node(500,var_type='C',name='C',field_typed=1)):
+            with self.assertRaises(EmissionError): Emitter().expr(value)
+
+    def test_field_without_alias(self):
+        field = node(27,name='B3_FILIAL')
+        self.assertEqual(Emitter().expr(node(62,left=None,right=field)),'_FIELD->B3_FILIAL')
+        self.assertEqual(Emitter().expr(node(63,left=None,right=node(31,name='CMES'))),'_FIELD->(CMES)')
+        self.assertEqual(Emitter().expr(node(62,left=node(27,name='SB3'),right=field)),'SB3->B3_FILIAL')
+
+    def test_align_original_lines(self):
+        source = ['','// Linha original: 10; objeto: 100','Static Function B()','    Local A','    Local B',
+                  '    If X','        Y()','    EndIf','    Return','','// Linha original: 2; objeto: 50',
+                  'User Function A()','    Return .T.']
+        smap = {4:11,5:11,6:12,7:12,9:13,13:3}
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            reconstructed = folder/'TESTE.reconstruido.prw'
+            reconstructed.write_text('\n'.join(source)+'\n',encoding='utf-8-sig')
+            report = {'source':reconstructed.name,
+                      'source_map':[{'generated_line':g,'original_line':o} for g,o in smap.items()]}
+            (folder/'decompilation.json').write_text(json.dumps(report),encoding='utf-8')
+            result = align(folder)
+            aligned = (folder/'TESTE.alinhado.prw').read_text(encoding='utf-8-sig').splitlines()
+            self.assertEqual(reconstructed.read_text(encoding='utf-8-sig').splitlines(),source)
+            self.assertTrue((folder/'alignment.json').exists())
+        self.assertEqual(aligned,['','User Function A()','    Return .T.']+['']*6+
+                         ['Static Function B()','    Local A, B','    IIf(X, Y(), Nil)','    Return'])
+        self.assertEqual((result['exact_ratio'],result['displaced']),(1.0,0))
+        self.assertEqual(result['folds'],{'declaracoes na mesma linha':1,'IIf':1})
 
     def test_lexical_failures(self):
         lexical('If .T.\n A("[()]")\nEndIf\n')
