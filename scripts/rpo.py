@@ -134,9 +134,13 @@ def reconstruct(args):
         advpl_emitter.main(out,emitter_class=emitter_class)
     from checks import verify
     report = verify(out)
+    from align_lines import align
+    aligned = align(out)
     print(json.dumps({'status':'reconstructed-and-statically-verified',
                       'source':str(out/report['source']),'functions':report['functions'],
                       'generated_lines':report['generated_lines'],
+                      'aligned_source':str(out/aligned['source']),'aligned_lines':aligned['lines'],
+                      'aligned_exact_ratio':aligned['exact_ratio'],
                       'limitation':'Experimental reconstruction; not compiled or executed.'}))
 
 
@@ -162,6 +166,13 @@ def main():
         from checks import verify
         print(json.dumps(verify(args.artifact_dir),indent=2))
     check.set_defaults(run=verification)
+    aligned = commands.add_parser('align',help='Write NAME.alinhado with statements on their original lines (debug)')
+    aligned.add_argument('--artifact-dir',required=True,type=Path)
+    def alignment(args):
+        from align_lines import align
+        result = align(args.artifact_dir)
+        print(json.dumps({k:v for k,v in result.items() if k!='displaced_sample'},indent=2,ensure_ascii=False))
+    aligned.set_defaults(run=alignment)
     args = cli.parse_args()
     try:
         args.run(args)

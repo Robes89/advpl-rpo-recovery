@@ -188,6 +188,12 @@ class Reader:
                 n['operator'] = chr(self.byte())
         elif t == 70:
             n['block'] = self.node()
+        elif t == 500:
+            # Declaracao tipada (Local x As Tipo): letra do tipo, nome e inteiro de 4 bytes.
+            # Validado em CNTA121.PRW (38 ocorrencias, inteiro sempre 0, parse completo).
+            n['var_type'] = chr(self.byte())
+            n['name'] = self.string()
+            n['field_typed'] = self.i32()
         elif t == 78:
             self.list_payload(n)
             n['recover'] = self.node() if self.boolean() else None
