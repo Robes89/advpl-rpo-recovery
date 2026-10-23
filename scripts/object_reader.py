@@ -14,6 +14,10 @@ class Unsupported(ValueError):
 
 
 class Reader:
+    # (letra do tipo, codigo TLPP) -> 8 bytes esperados na declaracao tipada sem inicializador
+    TLPP_TYPED = {('C', 1): bytes(8), ('L', 6): b'\x05'+bytes(7), ('O', 9): bytes(8), ('A', 10): bytes(8),
+                  ('N', 21): bytes(8), ('B', 22): bytes(8), ('I', 25): bytes(8)}
+
     def __init__(self, data):
         self.data, self.at, self.line = data, 0, 0
         self.completed, self.counts = [], Counter()
@@ -194,6 +198,28 @@ class Reader:
             n['var_type'] = chr(self.byte())
             n['name'] = self.string()
             n['field_typed'] = self.i32()
+            # TLPP: declaracao tipada sem inicializador grava o codigo de tipo TLPP + 8 bytes + 'T'.
+            # Validado em TAFA613.TLPP/TAFA614.TLPP (22/10/2026); combinacoes fora da tabela seguem bloqueadas.
+            if n['field_typed'] != 0:
+                expected = self.TLPP_TYPED.get((n['var_type'], n['field_typed']))
+                extra = self.take(8)
+                if expected is None or extra != expected or not self.boolean():
+                    raise Unsupported(f'Typed declaration {n["var_type"]}/{n["field_typed"]} '
+                                      f'trailer {extra.hex()} not validated at {n["offset"]}')
+                n['typed_trailer'] = extra.hex()
+        elif t == 101:
+            # TLPP Try/Catch/Finally/EndTry (validado em TAFA613.TLPP, 22/10/2026): corpo do Try
+            # como lista; depois Catch (tag 102) e Finally (comando ou lista), cada um com flag.
+            self.list_payload(n)
+            n['catch'] = self.node() if self.boolean() else None
+            if n['catch'] is not None and n['catch']['tag'] != 102:
+                raise Unsupported(f'Unexpected Try/Catch layout at {n["offset"]}')
+            n['finally'] = self.node() if self.boolean() else None
+        elif t == 102:
+            n['variable'] = self.node() if self.boolean() else None
+            if n['variable'] is not None and n['variable']['tag'] != 27:
+                raise Unsupported(f'Unexpected Catch variable at {n["offset"]}')
+            n['body'] = self.node()
         elif t == 78:
             self.list_payload(n)
             n['recover'] = self.node() if self.boolean() else None

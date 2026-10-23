@@ -25,15 +25,16 @@ def lexical(source):
                 require(stack.pop()=={')':'(',']':'[','}':'{'}[char],'Mismatched delimiter')
         require(quote is None,'Unterminated string')
         text = line.strip().lower()
-        if re.match(r'^if\b',text): controls.append('if')
+        if re.match(r'^if\b',text) and not re.search(r';\s*endif$',text): controls.append('if')
         elif text.startswith('do case'): controls.append('case')
         elif re.match(r'^for\b',text): controls.append('for')
         elif re.match(r'^while\b',text): controls.append('while')
         elif text=='begin sequence': controls.append('sequence')
-        elif text in ('endif','endcase','next','enddo','end sequence'):
+        elif text=='try': controls.append('try')
+        elif text in ('endif','endcase','next','enddo','end sequence','endtry'):
             require(bool(controls),'Unbalanced closing control')
             require(controls.pop()=={'endif':'if','endcase':'case','next':'for','enddo':'while',
-                                    'end sequence':'sequence'}[text],'Mismatched control')
+                                    'end sequence':'sequence','endtry':'try'}[text],'Mismatched control')
     require(not stack and not controls,'Unclosed delimiter/control')
 
 
