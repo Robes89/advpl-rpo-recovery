@@ -17,6 +17,20 @@ from align_lines import align
 def node(tag, **fields): return dict(tag=tag,offset=0,source_line=1,**fields)
 
 
+def run_align(source, smap):
+    with tempfile.TemporaryDirectory() as folder:
+        folder = Path(folder)
+        reconstructed = folder/'TESTE.reconstruido.prw'
+        reconstructed.write_text('\n'.join(source)+'\n',encoding='utf-8-sig')
+        report = {'source':reconstructed.name,
+                  'source_map':[{'generated_line':g,'original_line':o} for g,o in smap.items()]}
+        (folder/'decompilation.json').write_text(json.dumps(report),encoding='utf-8')
+        result = align(folder)
+        assert (folder/'alignment.json').exists()
+        assert reconstructed.read_text(encoding='utf-8-sig').splitlines() == source
+        return result, (folder/'TESTE.alinhado.prw').read_text(encoding='utf-8-sig').splitlines()
+
+
 class CoreChecks(unittest.TestCase):
     def test_tlpp_bodyless_method_wire_layout(self):
         prefix = bytes([68])+b'U\0F'+struct.pack('<iII',0,0,0)
@@ -127,26 +141,58 @@ class CoreChecks(unittest.TestCase):
         source = ['','// Linha original: 10; objeto: 100','Static Function B()','    Local A','    Local B',
                   '    If X','        Y()','    EndIf','    Return','','// Linha original: 2; objeto: 50',
                   'User Function A()','    Return .T.']
-        smap = {4:11,5:11,6:12,7:12,9:13,13:3}
-        with tempfile.TemporaryDirectory() as folder:
-            folder = Path(folder)
-            reconstructed = folder/'TESTE.reconstruido.prw'
-            reconstructed.write_text('\n'.join(source)+'\n',encoding='utf-8-sig')
-            report = {'source':reconstructed.name,
-                      'source_map':[{'generated_line':g,'original_line':o} for g,o in smap.items()]}
-            (folder/'decompilation.json').write_text(json.dumps(report),encoding='utf-8')
-            result = align(folder)
-            aligned = (folder/'TESTE.alinhado.prw').read_text(encoding='utf-8-sig').splitlines()
-            self.assertEqual(reconstructed.read_text(encoding='utf-8-sig').splitlines(),source)
-            self.assertTrue((folder/'alignment.json').exists())
+        result, aligned = run_align(source,{4:11,5:11,6:12,7:12,9:13,13:3})
         self.assertEqual(aligned,['','User Function A()','    Return .T.']+['']*6+
                          ['Static Function B()','    Local A, B','    IIf(X, Y(), Nil)','    Return'])
         self.assertEqual((result['exact_ratio'],result['displaced']),(1.0,0))
         self.assertEqual(result['folds'],{'declaracoes na mesma linha':1,'IIf':1})
 
+    def test_align_jump_on_one_line(self):
+        source = ['','// Linha original: 1; objeto: 10','User Function A()','    While .T.','        If X',
+                  '            Exit','        EndIf','    EndDo','    Return']
+        result, aligned = run_align(source,{4:2,5:3,6:3,8:4,9:5})
+        self.assertEqual(aligned,['User Function A()','    While .T.','        If X; Exit; EndIf','    EndDo','    Return'])
+        self.assertEqual((result['exact_ratio'],result['folds']),(1.0,{'If numa linha':1}))
+
+    def test_tlpp_typed_declaration_trailer(self):
+        def typed(kind, name, code, trailer, flag=b'T'):
+            return bytes([106])+struct.pack('<i',500)+kind+name+b'\0'+struct.pack('<i',code)+trailer+flag
+        payload = typed(b'L',b'LOK',6,b'\x05'+bytes(7))
+        reader = Reader(payload)
+        declaration = reader.node()
+        self.assertEqual(reader.at,len(payload))
+        self.assertEqual((declaration['field_typed'],declaration['typed_trailer']),(6,'05'+'00'*7))
+        self.assertEqual(Emitter().expr(declaration),'LOK As Logical')
+        self.assertEqual(Emitter().expr(Reader(typed(b'I',b'NQTD',25,bytes(8))).node()),'NQTD As Integer')
+        for value in (typed(b'L',b'LOK',6,bytes(8)),typed(b'C',b'CNOME',99,bytes(8)),typed(b'C',b'CNOME',1,bytes(8),b'F')):
+            with self.assertRaises(Unsupported): Reader(value).node()
+
+    def test_try_catch_finally(self):
+        def name(text): return bytes([27])+text+b'\0'
+        catch = bytes([102])+b'T'+name(b'OERR')+name(b'B')
+        payload = bytes([101])+struct.pack('<H',1)+name(b'A')+b'F'+b'T'+catch+b'T'+name(b'C')
+        reader = Reader(payload)
+        block = reader.node()
+        self.assertEqual(reader.at,len(payload))
+        emitter = Emitter();emitter.statement(block,1)
+        self.assertEqual(emitter.lines,['    Try','        A','    Catch OERR','        B','    Finally','        C','    EndTry'])
+        lexical('\n'.join(emitter.lines))
+        with self.assertRaises(Unsupported): Reader(payload.replace(bytes([102]),bytes([27])+b'X\0',1)).node()
+
+    def test_tlpp_function_only_program(self):
+        fn = node(67,function_type='F',symbol='TESTE',name='TESTE',declared_line=1,constants=[],
+                  parameters=[{'name':'CNOME','type':'C'},{'name':'XVALOR','type':'U'}],body=node(0))
+        root = node(117,children=[],functions=[fn],classes=[],optional_80=None,source_name='',
+                    program_source='SAMPLE.TLPP',static_definitions=node(2,children=[]))
+        emitter = TLPPEmitter();emitter.program(root)
+        self.assertIn('Function TESTE(CNOME As Character, XVALOR)',emitter.lines)
+        root['source_name'] = 'TEST'
+        with self.assertRaises(EmissionError): TLPPEmitter().program(root)
+
     def test_lexical_failures(self):
         lexical('If .T.\n A("[()]")\nEndIf\n')
-        for value in ('A(]', 'If .T.\nEndDo', 'A("text)', 'For I := 1 To 2'):
+        lexical('Try\n If X; Exit; EndIf\nEndTry\n')
+        for value in ('A(]', 'If .T.\nEndDo', 'A("text)', 'For I := 1 To 2', 'Try\nEndIf'):
             with self.assertRaises(ValueError): lexical(value)
 
 

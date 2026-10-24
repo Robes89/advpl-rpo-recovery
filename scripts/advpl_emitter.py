@@ -43,7 +43,7 @@ class Emitter:
               113:'<<',114:'>>',118:'+',119:'+',120:'+'}
     ASSIGN = {35:':=',36:':=',38:'+=',39:'-=',40:'*=',41:'/='}
     # Letras validadas: CNTA121.PRW (C/N/L/D/A/O) e MATA103.PRW (B = "Local bATFVlCT as Block").
-    TYPED = {'C':'Character','N':'Numeric','L':'Logical','D':'Date','A':'Array','O':'Object','B':'Block'}
+    TYPED = {'C':'Character','N':'Numeric','L':'Logical','D':'Date','A':'Array','O':'Object','B':'Block','I':'Integer'}
 
     def __init__(self):
         self.pool = []
@@ -81,7 +81,7 @@ class Emitter:
         if t == 115: return 'JsonObject():New()'
         if t == 500:
             # 'U' = tipo nao reconhecido pelo compilador (ex.: As Caracter): sem tipo efetivo.
-            if n['field_typed'] != 0:
+            if n['field_typed'] != 0 and 'typed_trailer' not in n:
                 self.error(n, 'Typed declaration with non-zero field not validated')
             if n['var_type'] == 'U':
                 return n['name']
@@ -261,10 +261,29 @@ class Emitter:
             self.visited[t] += 1
             self.put('Recover'+(' Using '+n['symbol'] if n['symbol'] else ''), indent, n)
             self.statement(n['body'], indent+1)
+        elif t == 101:
+            # TLPP Try: a linha do Try nao vem no objeto (gravada como 0); Finally/EndTry tambem nao.
+            self.visited[t] += 1
+            self.put('Try', indent)
+            for child in n['children']: self.statement(child, indent+1)
+            catch = n['catch']
+            if catch is not None:
+                self.rendered.add(id(catch))
+                self.visited[102] += 1
+                var = catch['variable']
+                self.put('Catch'+(' '+self.expr(var) if var is not None else ''), indent, catch)
+                self.statement(catch['body'], indent+1)
+            if n['finally'] is not None:
+                self.put('Finally', indent)
+                self.statement(n['finally'], indent+1)
+            self.put('EndTry', indent)
         elif t == 0:
             self.visited[t] += 1
         else:
             self.put(self.expr(n), indent, n)
+
+    def parameters(self, fn):
+        return ', '.join(p['name'] for p in fn['parameters'])
 
     def program(self, root):
         self.rendered.add(id(root))
@@ -282,7 +301,7 @@ class Emitter:
             name = fn['symbol'] or fn['name']
             self.put('')
             self.put('// Linha original: '+str(fn['declared_line'])+'; objeto: '+str(fn['offset']))
-            self.put(prefix+' '+name+'('+', '.join(p['name'] for p in fn['parameters'])+')', n=fn)
+            self.put(prefix+' '+name+'('+self.parameters(fn)+')', n=fn)
             first = len(self.lines)
             self.statement(fn['body'], 1)
             self.functions.append({'name':name,'kind':prefix,'original_line':fn['declared_line'],

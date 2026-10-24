@@ -25,6 +25,12 @@ class Emitter(base.Emitter):
 
     def program(self,root):
         self.references=[]
+        if not root['classes']:
+            # TLPP so com funcoes, sem Class e sem Namespace (validado em TAFA613.TLPP, 22/10/2026):
+            # mesmo layout de programa do PRW, com parametros tipados.
+            if root['children'] or root['optional_80'] is not None or root['source_name']:
+                self.error(root,'Unsupported additional program contents')
+            return base.Emitter.program(self,root)
         self.rendered.add(id(root))
         if root['children'] or root['functions'] or root['optional_80'] is not None:
             self.error(root,'Unsupported additional program contents')

@@ -20,9 +20,10 @@ from checks import lexical
 
 KEYWORDS = re.compile(r'\s*(If|ElseIf|Else|EndIf|Do|Case|Otherwise|EndCase|For|Next|While|EndDo|Return|'
                       r'Local|Static|Private|Public|Begin|Recover|End|Exit|Loop|Function|Method|User|'
-                      r'Main|Init|Class|EndClass|Data|Namespace)\b', re.I)
+                      r'Main|Init|Class|EndClass|Data|Namespace|Try|Catch|Finally|EndTry)\b', re.I)
 HEADER = re.compile(r'\s*(Static |User |Main |Init |Exit )?(Function|Method)\b', re.I)
 ORIGIN = re.compile(r'// Linha original: (\d+)')
+JUMP = re.compile(r'\s*(Exit|Loop|Return)\b', re.I)
 
 
 def is_expr(text):
@@ -107,6 +108,17 @@ def fold(items, folds):
             if body and closes(j, 'ENDIF'):
                 folds['IIf'] += 1
                 res.append((' '*ind + f'IIf({m.group(2)}, {group(body)}, Nil)', tgt))
+                i = j + 1
+                continue
+            # Exit/Loop/Return na mesma linha (TAFA613: if !lAtuPar; exit; endif) nao cabem em IIf:
+            # volta a forma de uma linha com ';', a mesma usada no fonte original.
+            j, body = i + 1, []
+            while j < len(items) and items[j][1] == tgt and (is_expr(items[j][0]) or JUMP.match(items[j][0])):
+                body.append(items[j][0].strip())
+                j += 1
+            if any(JUMP.match(b) for b in body) and closes(j, 'ENDIF'):
+                folds['If numa linha'] += 1
+                res.append((' '*ind + f'If {m.group(2)}; ' + '; '.join(body) + '; EndIf', tgt))
                 i = j + 1
                 continue
         res.append(items[i])
