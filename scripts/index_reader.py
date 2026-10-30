@@ -11,6 +11,11 @@ import csv
 from datetime import datetime, timedelta
 
 APP_SERVER_SHA256 = '850abee5b279ce7487eab3836a1adcbacfb5643120f962a8a399fdc979317d83'
+# Perfis de descritor aceitos e o menor offset de registro de cada um.
+# 0419/24.3.0.11: custom.rpo; o primeiro registro inicia em 38, conferido por decifragem e zlib.
+# 0419/24.3.1.5: patch .ptm, mesmo conteiner e mesmo cabecalho de 38 bytes.
+PROFILES = {('APNSRM0421','24.3.0.0_ts03'):39, ('APNSRM0419','24.3.0.11'):38,
+            ('APNSRM0419','24.3.1.5'):38}
 from pe_reader import read_pe
 from crypto import decrypt
 
@@ -195,7 +200,7 @@ def decode_index(rpo, window, fields, openssl=None):
     return plain, metadata
 
 
-def parse_entries(plain, body_end):
+def parse_entries(plain, body_end, min_offset=39):
     c = Cursor(plain)
     count = c.i32()
     if not 0 <= count <= min(2000000, len(plain)//46):
@@ -215,7 +220,7 @@ def parse_entries(plain, body_end):
         plain_bytes, compressed_bytes, field_34, field_38, field_20, field_24, field_30, cipher_bytes = values
         if min(plain_bytes, compressed_bytes, cipher_bytes) < 0:
             raise FormatError(f'Negative entry size at {start}')
-        if cipher_bytes and (offset < 39 or offset+cipher_bytes > body_end):
+        if cipher_bytes and (offset < min_offset or offset+cipher_bytes > body_end):
             raise FormatError(f'Entry ciphertext outside body: {name!r}')
         try:
             compiled = (datetime(1899, 12, 30)+timedelta(seconds=round(stamp*86400))).isoformat(timespec='seconds')

@@ -11,7 +11,40 @@ class Emitter(base.Emitter):
             self.rendered.add(id(n))
             self.visited[64] += 1
             return 'Super:'+self.expr(n['function_name'])+'('+self.arguments(n['arguments'])+')'
+        if n is not None and n['tag']==4009:
+            # Literal JSON: o primeiro par traz o JsonObject e a lista dos demais pares.
+            if n['json_object'] is None: self.error(n,'JSON pair outside literal')
+            parts=[]
+            for pair in [n]+n['pairs']['children']:
+                self.rendered.add(id(pair))
+                self.visited[4009] += 1
+                parts.append(base.quote(pair['key'])+': '+self.expr(pair['value']))
+            self.expr(n['json_object'])
+            self.rendered.add(id(n['pairs']))
+            self.visited[n['pairs']['tag']] += 1
+            return '{'+', '.join(parts)+'}'
         return super().expr(n,missing)
+
+    def method_head(self,fn):
+        kind = self.TYPED.get(fn['function_flag'])
+        return fn['symbol']+'('+self.parameters(fn)+')'+(' As '+kind if kind else '')
+
+    def annotations(self,fn):
+        # Formato lido do registro: nome + pares (chave, constante). So string/logico confirmados sao emitidos.
+        for item in fn.get('annotations',[]):
+            values=[]
+            for key,node in item['items']:
+                if node['tag']==25 and node['kind']=='L':
+                    text='.T.' if node['value'] else '.F.'
+                elif node['tag']==25 and node['kind']=='C' and '"' not in node['value'] and \
+                        not any(ord(c)<32 or 127<=ord(c)<160 for c in node['value']):
+                    text='"'+node['value']+'"'
+                else:
+                    self.error(node,'Unconfirmed annotation value')
+                self.rendered.add(id(node))
+                self.visited[25] += 1
+                values.append(key+'='+text)
+            self.put('@'+item['name']+'('+', '.join(values)+')',n=item['items'][0][1] if item['items'] else None)
 
     def parameters(self,fn):
         names = {'U':None,'C':'Character','L':'Logical','N':'Numeric','D':'Date','O':'Object','A':'Array'}
@@ -47,17 +80,20 @@ class Emitter(base.Emitter):
             if not cls['name'].startswith(root['source_name']+'.') or cls['implements']:
                 raise base.EmissionError('Unconfirmed class namespace/interfaces')
             name = cls['name'].rsplit('.',1)[1]
+            self.annotations(cls)
             self.put('Class '+name+' From '+cls['base_class'])
+            scopes={0:'Public',4:'Protected',8:'Private'}
             for field in cls['data']:
-                access={0:'Public',4:'Protected',8:'Private'}.get(field['flags'])
-                if access is None or field['type']!='O' or field['declared_type']!='OBJECT':
+                access=scopes.get(field['flags'])
+                kind=self.TYPED.get(field['type'])
+                if access is None or kind is None or field['declared_type']!=kind.upper():
                     raise base.EmissionError('Unconfirmed class-data scope/type')
-                text=access+' Data '+field['name']+' As Object'
+                text=access+' Data '+field['name']+' As '+kind
                 if field['initializer'] is not None: text+=' Init '+self.expr(field['initializer'])
                 self.put(text,1)
             implemented = [fn for fn in cls['methods'] if fn['has_body']]
             for fn in cls['methods']:
-                if fn['method_flags']!=0 or fn['inherited_call'] is not None:
+                if fn['method_flags'] not in scopes or fn['inherited_call'] is not None:
                     self.error(fn,'Unconfirmed method declaration flags')
                 if not fn['has_body']:
                     self.rendered.add(id(fn))
@@ -65,14 +101,14 @@ class Emitter(base.Emitter):
                                             'body_bytes':fn['body_bytes'],'declared_line':fn['declared_line'],
                                             'status':'bodyless-reference; implementation not present in this record'})
             for fn in sorted(implemented,key=lambda n:n['declared_line']):
-                self.put('Public Method '+fn['symbol']+'('+self.parameters(fn)+')',1,fn)
+                self.put(scopes[fn['method_flags']]+' Method '+self.method_head(fn),1,fn)
             self.put('EndClass')
             for fn in sorted(implemented,key=lambda n:n['declared_line']):
                 self.pool=fn.get('constants',[])
                 self.rendered.add(id(fn))
                 self.put('')
                 self.put('// Linha original: '+str(fn['declared_line'])+'; objeto: '+str(fn['offset']))
-                self.put('Method '+fn['symbol']+'('+self.parameters(fn)+') Class '+name,n=fn)
+                self.put('Method '+self.method_head(fn)+' Class '+name,n=fn)
                 start=len(self.lines)
                 self.statement(fn['body'],1)
                 self.functions.append({'name':fn['symbol'],'kind':'Method','class':cls['name'],

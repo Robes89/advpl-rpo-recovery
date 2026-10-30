@@ -45,7 +45,7 @@ def verify(directory):
     record,parsed,emitted = read('decoded-record.json'),read('object-parse.json'),read('decompilation.json')
     selected = read('selected-entry.json')
     name = record['source']
-    require(Path(name).name==name and re.fullmatch(r'[A-Za-z0-9_]+\.(PRW|PRX|TLPP)',name,re.I),'Unsafe source name')
+    require(Path(name).name==name and re.fullmatch(r'[A-Za-z0-9_]+(?:[.\- ][A-Za-z0-9_]+)*\.(PRW|PRX|TLPP)',name,re.I),'Unsafe source name')
     is_tlpp = name.upper().endswith('.TLPP')
     suffix = '.tlpp' if is_tlpp else '.prw'
     require(emitted['source']==Path(name).stem+'.reconstruido'+suffix,'Unexpected output name')

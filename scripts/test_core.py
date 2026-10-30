@@ -2,7 +2,9 @@
 import unittest
 import warnings
 import struct
+import zlib
 from pathlib import Path
+from types import SimpleNamespace
 import re
 import json
 import tempfile
@@ -12,6 +14,9 @@ from checks import lexical
 from tlpp_reader import Reader as TLPPReader
 from tlpp_emitter import Emitter as TLPPEmitter
 from align_lines import align
+from index_reader import FormatError, PROFILES
+import ptm
+import rpo
 
 
 def node(tag, **fields): return dict(tag=tag,offset=0,source_line=1,**fields)
@@ -69,6 +74,64 @@ class CoreChecks(unittest.TestCase):
         self.assertEqual(len(emitter.references),1)
         self.assertEqual(emitter.references[0]['name'],'EXTERNAL')
         self.assertFalse(any('Method EXTERNAL(' in line for line in emitter.lines))
+
+    def test_tlpp_json_literal(self):
+        tag = b'\x6a'+struct.pack('<i',4009)
+        pair = lambda value,key: tag+b'F'+value+b'F'+key+b'\0'
+        rest = bytes([2])+struct.pack('<H',1)+pair(b'\x1fUY\0',b'B')+b'F'
+        head = tag+b'T\x73'+b'\x1fUX\0'+b'T'+rest+b'A\0'
+        reader = TLPPReader(head)
+        literal = reader.node()
+        self.assertEqual(reader.at,len(head))
+        self.assertEqual(TLPPEmitter().expr(literal),'{"A": X, "B": Y}')
+        with self.assertRaises(Unsupported): TLPPReader(head.replace(b'T\x73',b'T\x00',1)).node()
+        with self.assertRaises(EmissionError): TLPPEmitter().expr(TLPPReader(pair(b'\x1fUY\0',b'B')).node())
+
+    def test_tlpp_class_annotation_and_scopes(self):
+        payload = b'T.S\0BASE\0'+struct.pack('<HH',0,0)+bytes([0,1])+b'NOTE\0\x02on\0\x19LTname\0\x19Cx\xe1\0'
+        reader = TLPPReader(payload)
+        cls = reader.class_interface()
+        self.assertEqual(reader.at,len(payload))
+        method = node(68,has_body=True,method_flags=4,inherited_call=None,symbol='M',parameters=[],
+                      body=node(2,children=[]),body_bytes=0,declared_line=5,function_flag='N')
+        cls.update(data=[{'flags':4,'name':'NX','type':'N','declared_type':'NUMERIC','initializer':None}],methods=[method])
+        root = node(117,children=[],functions=[],optional_80=None,source_name='T',program_source='S.TLPP',
+                    static_definitions=node(2,children=[]),classes=[cls])
+        emitter = TLPPEmitter();emitter.program(root)
+        for line in ('@NOTE(on=.T., name="x\xe1")','    Protected Data NX As Numeric',
+                     '    Protected Method M() As Numeric','Method M() As Numeric Class S'):
+            self.assertIn(line,emitter.lines)
+        method['method_flags'] = 2
+        with self.assertRaises(EmissionError): TLPPEmitter().program(root)
+        method['method_flags'] = 4
+        cls['annotations'][0]['items'][1][1]['value'] = 'a\nb'
+        with self.assertRaises(EmissionError): TLPPEmitter().program(root)
+
+    def test_source_name_filter(self):
+        args = SimpleNamespace(source='A.B-C D.TLPP',index_dir=Path('indice-inexistente'))
+        with self.assertRaises(FileNotFoundError): rpo.reconstruct(args)
+        for name in ('..\\A.PRW','A/B.PRW','A..B.PRW','.A.PRW','A.TXT'):
+            args.source = name
+            with self.assertRaises(FormatError): rpo.reconstruct(args)
+
+    def test_descriptor_profiles(self):
+        self.assertEqual(PROFILES[('APNSRM0421','24.3.0.0_ts03')],39)
+        self.assertEqual(PROFILES[('APNSRM0419','24.3.0.11')],38)
+        self.assertEqual(PROFILES[('APNSRM0419','24.3.1.5')],38)
+        self.assertNotIn(('APNSRM0419','20.3.2.11'),PROFILES)
+
+    def test_ptm_patchinfo_layout(self):
+        raw,stamp = b'PAYLOAD',struct.pack('<d',45000.0)
+        stored = zlib.compress(raw)
+        def patchinfo(gap):
+            record = struct.pack('<I',0)+b'A.PRW\0'+gap+b'A.PRW\0'+stamp+\
+                     struct.pack('<7I',0,0,0,1,len(raw),len(stored),len(stored))+stored
+            return b'R.RPO\0'+stamp+b'HOST\0'+struct.pack('<II',1,2)+b'APNSRM0419\0'+stamp+b'\0'+\
+                   struct.pack('<I',1)+b'A.PRW\0'+struct.pack('<I',1)+record+b'\0\0'
+        header,records,left = ptm.parse_patchinfo(patchinfo(bytes(9)))
+        self.assertEqual((header['format_build'],left),('APNSRM0419',2))
+        self.assertEqual((records[0]['name'],records[0]['serialized']),('A.PRW',raw))
+        with self.assertRaises(FormatError): ptm.parse_patchinfo(patchinfo(b'\x01'+bytes(8)))
 
     def test_portuguese_document_encoding(self):
         root=Path(__file__).resolve().parent.parent

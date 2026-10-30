@@ -23,14 +23,35 @@ class Reader(base.Reader):
         n['data'] = [self.class_data() for _ in range(self.u16())]
         n['methods'] = [self.node() for _ in range(self.u16())]
         n['implements'] = [self.string() for _ in range(self.small_count())]
-        annotations = self.small_count()
-        if annotations:
-            raise base.Unsupported(f'Unimplemented class annotations at {self.at-1}')
+        n['annotations'] = []
+        for _ in range(self.small_count()):
+            # Mesmo layout da anotacao de funcao: nome + pares (chave, constante).
+            # Validado em BACKOFFICE.SV.FIN.BANKSTATEMENT.TLPP (30/10/2026).
+            item = {'name':self.string()}
+            item['items'] = [(self.string(),self.node()) for _ in range(self.small_count())]
+            n['annotations'].append(item)
         n['end_offset'] = self.at
         return n
 
+    def json_literal(self, n):
+        # Literal JSON (tipo 4009, com escape 106). Primeiro par: objeto 115, valor, lista dos demais, chave.
+        # Demais pares: sem objeto, valor, sem lista, chave. Layout deduzido do registro, nao dos leitores
+        # nativos; fronteiras de corpo exatas em BACKOFFICE.SV.FIN.BANKSTATEMENT.TLPP (30/10/2026).
+        n['json_object'] = self.node() if self.boolean() else None
+        n['value'] = self.node()
+        n['pairs'] = self.node() if self.boolean() else None
+        n['key'] = self.string()
+        head = n['json_object'] is not None
+        if head != (n['pairs'] is not None) or (head and n['json_object']['tag'] != 115):
+            raise base.Unsupported(f'Unexpected JSON literal layout at {n["offset"]}')
+        if head and (n['pairs']['tag'] != 2 or 'stack_symbols' in n['pairs'] or
+                     any(c['tag'] != 4009 or c['json_object'] is not None for c in n['pairs']['children'])):
+            raise base.Unsupported(f'Unexpected JSON literal pairs at {n["offset"]}')
+
     def payload(self, n):
-        if n['tag'] == 68:
+        if n['tag'] == 4009:
+            self.json_literal(n)
+        elif n['tag'] == 68:
             n['tag'] = 67
             try:
                 super().payload(n)
