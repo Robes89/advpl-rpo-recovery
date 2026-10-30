@@ -5,9 +5,9 @@ description: Reconstruct ADVPL PRW/PRX routines and supported TLPP classes from 
 
 # Recuperar ADVPL e TLPP de RPO
 
-Reconstrua uma entrada exata `.PRW`, `.PRX` ou uma classe `.TLPP` compatível de um RPO fornecido pelo usuário. Use os scripts incluídos, derivados dos leitores do AppServer analisado. Eles não dependem de um modelo específico, servidor MCP ou instalação do REA.
+Reconstrua uma entrada exata `.PRW`, `.PRX` ou uma classe `.TLPP` compatível de um RPO ou patch `.ptm` fornecido pelo usuário. Use os scripts incluídos, derivados dos leitores do AppServer analisado. Eles não dependem de um modelo específico, servidor MCP ou instalação do REA.
 
-A portabilidade das instruções não amplia o suporte ao formato: o perfil atual aceita somente o DLL e o descritor documentados em [formato e evidências](references/format-and-evidence.md). Para TLPP, leia também [suporte TLPP](references/tlpp.md) antes de interpretar os resultados. Não declare suporte universal a RPO ou equivalência do fonte original.
+A portabilidade das instruções não amplia o suporte ao formato: os perfis atuais aceitam somente o DLL e os descritores documentados em [formato e evidências](references/format-and-evidence.md). Para TLPP, leia também [suporte TLPP](references/tlpp.md) antes de interpretar os resultados. Não declare suporte universal a RPO ou equivalência do fonte original.
 
 ## Execução
 
@@ -22,9 +22,13 @@ python SKILL/scripts/rpo.py index --rpo ARQUIVO.rpo --appserver apwinnt.dll --ou
 python SKILL/scripts/rpo.py decompile --rpo ARQUIVO.rpo --index-dir INDICE --source ROTINA.PRW --output-dir SAIDA
 python SKILL/scripts/rpo.py decompile --rpo ARQUIVO.rpo --index-dir INDICE --source CLASSE.TLPP --output-dir SAIDA_TLPP
 python SKILL/scripts/rpo.py verify --artifact-dir SAIDA
+python SKILL/scripts/ptm.py list --ptm ARQUIVO.ptm --appserver apwinnt.dll
+python SKILL/scripts/ptm.py decompile --ptm ARQUIVO.ptm --appserver apwinnt.dll --source ROTINA.PRW --output-dir SAIDA_PTM
 ```
 
 Os dois primeiros subcomandos aceitam `--openssl CAMINHO`. Escolha uma pasta de saída nova por reconstrução. `decompile` já verifica os artefatos; `verify` permite repetir essa etapa.
+
+Um patch `.ptm` não precisa de índice: `ptm.py` lê o registro `PATCHINFO` e aceita `--openssl CAMINHO`. Não abra `SIGAPKEY.MAP` nem `SIGATOKEN.MAP`. O nome de relatório SmartView ou TReports, como `backoffice.sv.fin.bankstatement`, corresponde à entrada `.TLPP` de mesmo nome; os `.TRP`, `.TVIEW` e `.TRES` associados são recursos e não são reconstruídos.
 
 O nome da entrada é exato: não confunda variantes como `JURXFUN`, `JURXFUNB` e `JURXFUNC`. O comando não executa o RPO, carrega o DLL nem inicia o AppServer. Não substitua essa leitura por chamadas ao debugger, compilação ou gravação no repositório.
 

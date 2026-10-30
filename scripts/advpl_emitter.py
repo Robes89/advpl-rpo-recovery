@@ -285,6 +285,9 @@ class Emitter:
     def parameters(self, fn):
         return ', '.join(p['name'] for p in fn['parameters'])
 
+    def annotations(self, fn):
+        pass
+
     def program(self, root):
         self.rendered.add(id(root))
         self.put('// Reconstrucao experimental de '+root['program_source']+' a partir do RPO fornecido.')
@@ -301,6 +304,7 @@ class Emitter:
             name = fn['symbol'] or fn['name']
             self.put('')
             self.put('// Linha original: '+str(fn['declared_line'])+'; objeto: '+str(fn['offset']))
+            self.annotations(fn)
             self.put(prefix+' '+name+'('+self.parameters(fn)+')', n=fn)
             first = len(self.lines)
             self.statement(fn['body'], 1)

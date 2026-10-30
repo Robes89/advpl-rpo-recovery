@@ -42,10 +42,10 @@ def build_index(args):
     if not 1 <= length <= len(window)-4: raise idx.FormatError('Invalid descriptor size')
     descriptor = idx.recover_descriptor(window[4:4+length],numbers)
     fields = idx.parse_descriptor(descriptor)
-    if fields['format_build'] != 'APNSRM0421' or fields['appserver_build'] != '24.3.0.0_ts03':
+    if (fields['format_build'],fields['appserver_build']) not in idx.PROFILES:
         raise idx.FormatError('Descriptor build is outside the validated profile')
     plain,decoded = idx.decode_index(args.rpo,window,fields,args.openssl)
-    entries = idx.parse_entries(plain,fields['index_file_offset'])
+    entries = idx.parse_entries(plain,fields['index_file_offset'],idx.PROFILES[(fields['format_build'],fields['appserver_build'])])
     if len({r['name'].upper() for r in entries}) != len(entries):
         raise idx.FormatError('Ambiguous index names')
     report = {'status':'index-decoded-and-entry-ranges-validated','rpo_sha256':digest,
@@ -64,20 +64,20 @@ def build_index(args):
 
 def reconstruct(args):
     name = args.source.upper()
-    if not re.fullmatch(r'[A-Z0-9_]+\.(PRW|PRX|TLPP)',name):
+    if not re.fullmatch(r'[A-Z0-9_]+(?:[.\- ][A-Z0-9_]+)*\.(PRW|PRX|TLPP)',name):
         raise idx.FormatError('Expected one indexed PRW, PRX or TLPP basename')
     is_tlpp = name.endswith('.TLPP')
     cached = read_json(args.index_dir/'descriptor.json')
     if cached['appserver_sha256'] != idx.APP_SERVER_SHA256:
         raise idx.FormatError('Cached index uses an unsupported AppServer profile')
     fields = cached['descriptor']
-    if (fields['format_build'],fields['appserver_build']) != ('APNSRM0421','24.3.0.0_ts03'):
+    if (fields['format_build'],fields['appserver_build']) not in idx.PROFILES:
         raise idx.FormatError('Unsupported cached descriptor build')
     plain = (args.index_dir/'index-decoded.bin').read_bytes()
     index_hash = hashlib.sha256(plain).hexdigest()
     if index_hash != cached['decoded_index']['plain_sha256']:
         raise idx.FormatError('Cached index checksum mismatch')
-    entries = idx.parse_entries(plain,fields['index_file_offset'])
+    entries = idx.parse_entries(plain,fields['index_file_offset'],idx.PROFILES[(fields['format_build'],fields['appserver_build'])])
     selected = [r for r in entries if r['name'].upper()==name]
     if len(selected) != 1: raise idx.FormatError('Expected exactly one indexed entry for '+name)
     entry = selected[0]

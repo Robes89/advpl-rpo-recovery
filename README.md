@@ -10,10 +10,12 @@ python scripts/rpo.py decompile --rpo ARQUIVO.rpo --index-dir INDICE --source RO
 python scripts/rpo.py decompile --rpo ARQUIVO.rpo --index-dir INDICE --source ACBALANCEDISTRIBUTEREPOSITORY.TLPP --output-dir SAIDA_TLPP
 python scripts/rpo.py verify --artifact-dir SAIDA
 python scripts/rpo.py align --artifact-dir SAIDA
+python scripts/ptm.py list --ptm ARQUIVO.ptm --appserver apwinnt.dll
+python scripts/ptm.py decompile --ptm ARQUIVO.ptm --appserver apwinnt.dll --source ROTINA.PRW --output-dir SAIDA_PTM
 python scripts/test_core.py
 ```
 
-Use uma pasta de saída nova por reconstrução. Os comandos `index` e `decompile` aceitam `--openssl CAMINHO` quando o executável não estiver no PATH.
+Use uma pasta de saída nova por reconstrução. Os comandos `index`, `decompile` e `ptm.py` aceitam `--openssl CAMINHO` quando o executável não estiver no PATH.
 
 ## Saídas do `decompile`
 
@@ -48,8 +50,14 @@ Além do perfil original, o leitor e o emissor reconhecem:
 | `Try/Catch/Finally/EndTry` (TLPP) | tag 101: corpo em lista, `Catch` (tag 102, com variável opcional) e `Finally`, cada um precedido de flag | `Try` ... `Catch oErr` ... `Finally` ... `EndTry` | TAFA613.TLPP |
 | Programa TLPP só com funções (sem `Class`/`Namespace`) | mesmo layout de programa do PRW | funções com parâmetros tipados (`cNome As Character`) | TAFA613.TLPP |
 | Campo sem alias (`Replace x With y`) | tags 62/63 sem operando esquerdo | `_FIELD->CAMPO` | MATA103.PRW (`Replace B3_FILIAL With ...`, `Replace &(cMes) With ...`) |
+| Perfil `APNSRM0419` | Descritores `24.3.0.11` (RPO) e `24.3.1.5` (patch) com a mesma DLL; primeiro registro no offset 38 | Mesmo fluxo do perfil original | Offset conferido por decifragem e zlib |
+| Patch `.ptm` | Contêiner do RPO, com os fontes no registro `PATCHINFO` | `scripts/ptm.py list` e `decompile` | Patch com 145 registros, com tamanho e zlib conferidos em cada registro |
+| Nome com ponto, hífen ou espaço | Entrada como `BACKOFFICE.SV.FIN.BANKSTATEMENT.TLPP` | Seleção exata pelo índice | BACKOFFICE.SV.FIN.BANKSTATEMENT.TLPP |
+| Anotação de função e de classe TLPP | Nome e pares chave/constante | `@NOME(chave="valor", ativo=.T.)`, só com string ou lógico | Funções REST (`@POST`); classe com 7 pares |
+| Literal JSON TLPP | Tag 4009 com escape 106: pares valor/chave, o primeiro com `JsonObject():New()` e a lista dos demais | `{"CHAVE": valor}` | 28 pares em 2 literais, com as fronteiras dos 13 métodos exatas |
+| Campos e métodos de classe | Campos de todos os tipos; escopos 0/4/8; tipo de retorno na letra da função | `Protected Data X As Numeric`, `Protected Method M() As Numeric` | BACKOFFICE.SV.FIN.BANKSTATEMENT.TLPP (24 campos, 13 métodos) |
 
-Letras de tipo não validadas, inteiro diferente de zero fora das combinações TLPP da tabela ou bytes extras diferentes dos esperados interrompem a leitura ou a emissão com erro, em vez de gerar código não comprovado. O RPO não grava a linha do `Try`, do `Finally` nem do `EndTry`; no fonte alinhado elas ficam logo depois do comando anterior.
+Letras de tipo não validadas, inteiro diferente de zero fora das combinações TLPP da tabela ou bytes extras diferentes dos esperados interrompem a leitura ou a emissão com erro, em vez de gerar código não comprovado. O RPO não grava a linha do `Try`, do `Finally` nem do `EndTry`; no fonte alinhado elas ficam logo depois do comando anterior. Consulte [formato e evidências](references/format-and-evidence.md) para o que foi deduzido do registro e não dos leitores nativos.
 
 Resultados com o `tttm120.rpo` (AppServer 24.3.1.5):
 
@@ -58,7 +66,8 @@ Resultados com o `tttm120.rpo` (AppServer 24.3.1.5):
 | CNTA121.PRW | 217 | 15.647 | 99,99% | 216/216 funções na mesma linha do fonte da mesma versão |
 | MATA103.PRW | 174 | 28.588 | 99,97% | Os 5 restantes são declarações `Static` |
 | JURXFUN.PRW | 183 | 9.501 | 98,6% | Reconstrução idêntica à validada; sobram cadeias `If/ElseIf` de macro |
+| BACKOFFICE.SV.FIN.BANKSTATEMENT.TLPP | 13 | 551 | 94,86% | Os 13 restantes são as declarações de método da classe |
 
-O perfil atual é limitado ao build e hash documentados em [formato e evidências](references/format-and-evidence.md). O suporte a TLPP foi validado com uma classe, seis métodos implementados e duas referências sem corpo, e com programas só com funções (TAFA613.TLPP e TAFA614.TLPP). Essas referências são preservadas nos metadados; nenhuma implementação ausente é inventada. Consulte [suporte TLPP](references/tlpp.md) para os limites.
+Os perfis são limitados aos builds e ao hash documentados em [formato e evidências](references/format-and-evidence.md). O suporte a TLPP foi validado com duas classes, 19 métodos implementados e duas referências sem corpo, e com programas só com funções (TAFA613.TLPP e TAFA614.TLPP). Essas referências são preservadas nos metadados; nenhuma implementação ausente é inventada. Consulte [suporte TLPP](references/tlpp.md) para os limites.
 
-Os resultados são reconstruções experimentais: não foram recompilados nem executados no Protheus, e cobertura integral não comprova equivalência funcional. Outros builds, tipos desconhecidos, anotações e formatos de classe não validados exigem análise adicional. Comentários, includes e macros originais não existem no RPO e não são recuperados; o alinhamento reproduz as linhas de código, não o texto original. RPOs gerados por outros builds de AppServer (ex.: 20.3.2.11, descritor `APNSRM0419`) são recusados.
+Os resultados são reconstruções experimentais: não foram recompilados nem executados no Protheus, e cobertura integral não comprova equivalência funcional. Outros builds, tipos desconhecidos, anotações e formatos de classe não validados exigem análise adicional. Comentários, includes e macros originais não existem no RPO e não são recuperados; o alinhamento reproduz as linhas de código, não o texto original. RPOs de builds fora dos perfis (ex.: 20.3.2.11, mesmo com descritor `APNSRM0419`) são recusados.

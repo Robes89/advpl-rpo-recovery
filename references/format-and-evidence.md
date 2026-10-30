@@ -16,6 +16,18 @@ Este leitor é derivado da análise estática do AppServer fornecido durante a r
 
 O número do build no diagnóstico não substitui o hash da imagem. O script rejeita DLLs diferentes e descritores fora do perfil. Isso permite testar outros RPOs desse formato, mas não comprova que seus tipos compilados estejam todos cobertos. O suporte TLPP é limitado às estruturas descritas em [suporte TLPP](tlpp.md).
 
+## Perfis adicionais
+
+| Descritor | Build | Menor offset de registro | Uso |
+| --- | --- | --- | --- |
+| `APNSRM0421` | `24.3.0.0_ts03` | 39 | RPO padrão, perfil original |
+| `APNSRM0419` | `24.3.0.11` | 38 | RPO de customizações |
+| `APNSRM0419` | `24.3.1.5` | 38 | Patch `.ptm` |
+
+Os perfis `APNSRM0419` foram abertos com a mesma DLL e o mesmo hash. O offset 38 foi conferido por decifragem e zlib do primeiro registro, e a primeira sonda passou 819 de 886 fontes em parse, emissão e verificação. Outro build com o mesmo descritor continua recusado.
+
+O patch `.ptm` usa o mesmo contêiner do RPO, com um único registro `PATCHINFO` que guarda cabeçalho, lista de nomes e os registros serializados com zlib próprio. `ptm.py` confere ordem, nome, tamanho e checksum de cada registro. Esse layout foi deduzido do arquivo e conferido em um patch com 145 registros, não derivado dos leitores nativos. `SIGAPKEY.MAP` e `SIGATOKEN.MAP` não são abertos.
+
 ## Caminho de leitura
 
 O descritor é recuperado por RSA pública e validado pelo padding PKCS#1 tipo 1. A chave pública vem do carrier DWORD no DLL; os bytes privados existentes no mesmo carrier não são extraídos. O descritor fornece os limites do índice cifrado; padding, checksum zlib, tamanho e consumo integral são conferidos.
